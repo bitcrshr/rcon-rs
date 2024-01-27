@@ -1,7 +1,7 @@
 use std::{
     io::Read,
     io::Write,
-    net::{AddrParseError, SocketAddr, TcpStream},
+    net::{SocketAddr, TcpStream},
     time::Duration,
 };
 
@@ -10,40 +10,13 @@ use crate::packet::{
     SERVERDATA_AUTH_RESPONSE, SERVERDATA_EXECCOMMAND, SERVERDATA_RESPONSE_VALUE,
 };
 
+use crate::errors::{Error, Result};
+
 const DEFAULT_DIAL_TIMEOUT: Duration = Duration::from_secs(5);
 const DEFAULT_DEADLINE: Duration = Duration::from_secs(5);
 const MAX_COMMAND_LEN: i32 = 1000;
 
 const SERVERDATA_EXECCOMMAND_ID: i32 = 0;
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-pub enum Error {
-    BadAddress(String),
-    IoError(String),
-    BadResponse(String),
-    AuthFailed,
-    CommandEmpty,
-    CommandTooLong(usize),
-}
-
-impl From<AddrParseError> for Error {
-    fn from(value: AddrParseError) -> Self {
-        Self::BadAddress(value.to_string())
-    }
-}
-
-impl From<std::io::Error> for Error {
-    fn from(value: std::io::Error) -> Self {
-        Self::IoError(value.to_string())
-    }
-}
-
-impl From<super::packet::Error> for Error {
-    fn from(value: super::packet::Error) -> Self {
-        Self::BadResponse(value.to_string())
-    }
-}
 
 pub struct Conn {
     conn: TcpStream,
@@ -70,7 +43,7 @@ impl Conn {
         }
 
         if command.len() > MAX_COMMAND_LEN as usize {
-            return Err(Error::CommandTooLong(command.len()));
+            return Err(Error::CommandTooLong);
         }
 
         self.write(SERVERDATA_EXECCOMMAND, SERVERDATA_EXECCOMMAND_ID, command)?;
@@ -78,7 +51,7 @@ impl Conn {
         let packet = self.read()?;
 
         if packet.get_id() != SERVERDATA_EXECCOMMAND_ID {
-            return Err(Error::BadResponse(String::from("invalid exec command id")));
+            return Err(Error::InvalidPacketId);
         }
 
         Ok(packet.get_body())
@@ -91,9 +64,7 @@ impl Conn {
 
         let size = header.0 - PACKET_HEADER_SIZE;
         if size < 0 {
-            return Err(Error::BadResponse(String::from(
-                "packet header had invalid size",
-            )));
+            return Err(Error::InvalidPacketSize);
         }
 
         // When the server receives an auth request, it will respond with an empty
@@ -113,7 +84,7 @@ impl Conn {
         self.conn.read_exact(&mut buf)?;
 
         if header.2 != SERVERDATA_AUTH_RESPONSE {
-            return Err(Error::BadResponse(String::from("invalid auth response")));
+            return Err(Error::InvalidAuthResponse);
         }
 
         if header.1 == -1 {
@@ -121,7 +92,7 @@ impl Conn {
         }
 
         if header.1 != SERVERDATA_AUTH_ID {
-            return Err(Error::BadResponse(String::from("invalid auth packet id")));
+            return Err(Error::InvalidAuthResponse);
         }
 
         Ok(())

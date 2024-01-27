@@ -1,4 +1,4 @@
-use strum::Display;
+use crate::errors::{Error, Result};
 
 pub type PacketType = i32;
 
@@ -24,43 +24,6 @@ pub const PACKET_HEADER_SIZE: i32 = 8;
 
 pub const MIN_PACKET_SIZE: i32 = PACKET_PADDING_SIZE + PACKET_HEADER_SIZE;
 pub const MAX_PACKET_SIZE: i32 = 4096 + MIN_PACKET_SIZE;
-
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(Debug, Display)]
-pub enum Error {
-    #[strum(serialize = "response had negative size, not rcon")]
-    AuthNotRCON,
-
-    #[strum(serialize = "invalid auth response")]
-    InvalidAuthResponse,
-
-    #[strum(serialize = "auth failed")]
-    AuthFailed,
-
-    #[strum(serialize = "invalid packet id")]
-    InvalidPacketID,
-
-    #[strum(serialize = "invalid packet padding")]
-    InvalidPacketPadding,
-
-    #[strum(serialize = "invalid packet type")]
-    InvalidPacketType,
-
-    #[strum(serialize = "response was too small (less than 10 bytes)")]
-    ResponseTooSmall,
-
-    #[strum(serialize = "command too long")]
-    CommandTooLong,
-
-    #[strum(serialize = "command empty")]
-    CommandEmpty,
-
-    #[strum(serialize = "an error occurred while handling another error")]
-    MultiErrorOccurred,
-
-    Other(Box<dyn std::error::Error>),
-}
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Packet {
@@ -96,8 +59,7 @@ impl Packet {
             _ => return Err(Error::InvalidPacketType),
         }
 
-        let body = String::from_utf8(Vec::from(&buf[12..buf.len() - 2]))
-            .map_err(|e| Error::Other(Box::new(e)))?;
+        let body = String::from_utf8(Vec::from(&buf[12..buf.len() - 2]))?;
 
         if buf[buf.len() - 2] != 0x00 || buf[buf.len() - 1] != 0x00 {
             return Err(Error::InvalidPacketPadding);
@@ -159,6 +121,4 @@ mod test {
 
         assert_eq!(packet, actual_packet);
     }
-
-    fn valid_command_serde() {}
 }
