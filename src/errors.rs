@@ -37,11 +37,14 @@ pub enum Error {
     CommandTooLong,
 
     #[error("invalid address supplied")]
-    InvalidAddress(#[from] std::net::AddrParseError),
+    InvalidAddress,
 
     #[error("an io error occurred with the socket")]
     SocketError(#[from] std::io::Error),
 
     #[error("failed to parse body")]
     BodyParseError(#[from] FromUtf8Error),
+
+    #[error("ping request succeeded but response was '{0}' instead of 'pong'")]
+    BadPing(String),
 }

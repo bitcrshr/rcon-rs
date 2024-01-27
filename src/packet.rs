@@ -45,31 +45,56 @@ impl Packet {
         }
     }
 
-    pub fn from_bytes(buf: Vec<u8>) -> Result<Self> {
-        let size = i32::from_le_bytes([buf[0], buf[1], buf[2], buf[3]]);
+    pub fn read_from(r: &mut dyn std::io::Read) -> Result<Self> {
+        let mut size_buf = [0; 4];
+
+        r.read_exact(&mut size_buf)?;
+
+        let size = i32::from_le_bytes(size_buf);
+
         if size < MIN_PACKET_SIZE {
             return Err(Error::ResponseTooSmall);
         }
 
-        let id = i32::from_le_bytes([buf[4], buf[5], buf[6], buf[7]]);
+        let mut id_buf = [0; 4];
+        let mut type_buf = [0; 4];
 
-        let type_ = i32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
-        match type_ {
-            0 | 3 | 2 => (),
-            _ => return Err(Error::InvalidPacketType),
+        r.read_exact(&mut id_buf)?;
+        r.read_exact(&mut type_buf)?;
+
+        let id = i32::from_le_bytes(id_buf);
+        let type_ = i32::from_le_bytes(type_buf);
+
+        println!(
+            "header has been read. size: {}, id: {}, type: {}",
+            size, id, type_
+        );
+
+        let mut body_buf = vec![0; (size - PACKET_HEADER_SIZE) as usize];
+        let mut total_read = 0;
+
+        while total_read < body_buf.len() {
+            match r.read(&mut body_buf[total_read..]) {
+                Ok(0) => break,
+                Ok(n) => {
+                    total_read += n;
+                    println!("read {} bytes into body", n);
+                }
+                Err(e) => return Err(e.into()),
+            }
         }
 
-        let body = String::from_utf8(Vec::from(&buf[12..buf.len() - 2]))?;
+        println!("body_buf: {:#?}", body_buf);
 
-        if buf[buf.len() - 2] != 0x00 || buf[buf.len() - 1] != 0x00 {
-            return Err(Error::InvalidPacketPadding);
-        }
+        body_buf.truncate(total_read);
+
+        println!("truncated body_buf: {:#?}", body_buf);
 
         Ok(Self {
             size,
-            id,
             type_,
-            body,
+            id,
+            body: String::from_utf8(body_buf[0..body_buf.len() - 2].to_vec())?,
         })
     }
 
@@ -89,7 +114,7 @@ impl Packet {
         self.body.clone()
     }
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+    pub fn write_to(&self, w: &mut dyn std::io::Write) -> Result<()> {
         let mut buf = Vec::with_capacity(self.size as usize + 4);
 
         buf.extend_from_slice(&self.size.to_le_bytes());
@@ -98,7 +123,11 @@ impl Packet {
         buf.extend_from_slice(self.body.as_bytes());
         buf.extend_from_slice(&[0x00, 0x00]);
 
-        buf
+        w.write_all(&buf)?;
+
+        w.flush()?;
+
+        Ok(())
     }
 }
 
@@ -110,14 +139,18 @@ mod test {
     fn valid_auth_serde() {
         let packet = Packet::new(SERVERDATA_AUTH, 1, "mypassword");
 
-        let actual_bytes: Vec<u8> = vec![
+        let mut actual_bytes: Vec<u8> = vec![
             0x14, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x03, 0x00, 0x00, 0x00, 0x6d, 0x79,
             0x70, 0x61, 0x73, 0x73, 0x77, 0x6f, 0x72, 0x64, 0x00, 0x00,
         ];
 
-        assert_eq!(packet.to_bytes(), actual_bytes);
+        let mut buf: Vec<u8> = vec![];
 
-        let actual_packet = Packet::from_bytes(actual_bytes).unwrap();
+        packet.write_to(&mut buf).unwrap();
+
+        assert_eq!(buf, actual_bytes);
+
+        let actual_packet = Packet::read_from(&mut buf.as_slice()).unwrap();
 
         assert_eq!(packet, actual_packet);
     }
