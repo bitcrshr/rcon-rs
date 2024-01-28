@@ -25,7 +25,7 @@ pub const PACKET_HEADER_SIZE: i32 = 8;
 pub const MIN_PACKET_SIZE: i32 = PACKET_PADDING_SIZE + PACKET_HEADER_SIZE;
 pub const MAX_PACKET_SIZE: i32 = 4096 + MIN_PACKET_SIZE;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Packet {
     size: i32,
     id: i32,
@@ -65,11 +65,6 @@ impl Packet {
         let id = i32::from_le_bytes(id_buf);
         let type_ = i32::from_le_bytes(type_buf);
 
-        println!(
-            "header has been read. size: {}, id: {}, type: {}",
-            size, id, type_
-        );
-
         let mut body_buf = vec![0; (size - PACKET_HEADER_SIZE) as usize];
         let mut total_read = 0;
 
@@ -78,17 +73,12 @@ impl Packet {
                 Ok(0) => break,
                 Ok(n) => {
                     total_read += n;
-                    println!("read {} bytes into body", n);
                 }
                 Err(e) => return Err(e.into()),
             }
         }
 
-        println!("body_buf: {:#?}", body_buf);
-
         body_buf.truncate(total_read);
-
-        println!("truncated body_buf: {:#?}", body_buf);
 
         Ok(Self {
             size,

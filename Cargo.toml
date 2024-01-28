@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 r2d2 = "0.8.10"
+rand = "0.8.5"
 strum = { version = "0.25.0", features = ["derive"] }
 thiserror = "1.0.56"
